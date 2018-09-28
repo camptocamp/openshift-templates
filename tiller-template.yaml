@@ -1,0 +1,88 @@
+kind: Template
+apiVersion: v1
+objects:
+- kind: ServiceAccount
+  apiVersion: v1
+  metadata:
+    name: tiller-deploy
+
+- kind: ClusterRoleBinding
+  apiVersion: v1
+  metadata:
+    name: tiller-deploy
+  roleRef:
+    name: cluster-admin
+  subjects:
+  - kind: ServiceAccount
+    name: tiller-deploy
+    namespace: ${TILLER_NAMESPACE}
+
+- apiVersion: extensions/v1beta1
+  kind: Deployment
+  metadata:
+    labels:
+      app: helm
+      name: tiller
+    name: tiller-deploy
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: helm
+        name: tiller
+    template:
+      metadata:
+        labels:
+          app: helm
+          name: tiller
+      spec:
+        containers:
+        - name: tiller-deploy
+          image: gcr.io/kubernetes-helm/tiller:${HELM_VERSION}
+          env:
+          - name: TILLER_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          ports:
+          - name: tiller-deploy
+            containerPort: 44134
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: 44135
+          livenessProbe:
+            httpGet:
+              path: /liveness
+              port: 44135
+        serviceAccountName: tiller-deploy
+
+- kind: Service
+  apiVersion: v1
+  metadata:
+    labels:
+      app: helm
+      name: tiller
+    name: tiller-deploy
+    namespace: ${TILLER_NAMESPACE}
+  spec:
+    ports:
+    - name: tiller
+      port: 44134
+      protocol: TCP
+      targetPort: tiller
+    selector:
+      app: helm
+      name: tiller
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+
+parameters:
+- name: HELM_VERSION
+  value: v2.10.0
+  required: true
+- name: TILLER_NAMESPACE
+  value: tiller
+  required: true
